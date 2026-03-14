@@ -12,32 +12,29 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY")
 GATEWAY_API_KEY = os.environ.get("GATEWAY_API_KEY")
 
-# Logging setup
+# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("listener-room-gateway")
 
-# Allowed RPC functions
+# For now, only Sender Sufficiency exists in Supabase.
+# Future rooms can be added here later.
 ALLOWED_FUNCTIONS = {
-    # sender sufficiency
     "sender_sufficiency_reserve_source",
     "sender_sufficiency_heartbeat",
     "sender_sufficiency_close_source_no_rows",
     "sender_sufficiency_commit_row_and_close_source",
-
-    # re-entry
-    "reentry_reserve_source",
-    "reentry_heartbeat",
-    "reentry_close_source_no_rows",
-    "reentry_commit_row_and_close_source",
 }
+
 
 class RpcRequest(BaseModel):
     function_name: str
     params: dict = Field(default_factory=dict)
 
+
 @app.get("/")
 def root():
     return {"status": "gateway running"}
+
 
 @app.post("/rpc")
 def call_rpc(payload: RpcRequest, x_api_key: str = Header(default=None)):
@@ -97,6 +94,12 @@ def call_rpc(payload: RpcRequest, x_api_key: str = Header(default=None)):
             },
         )
 
+    # Inject request ID into params so Supabase can store it in rows if desired
+    supabase_params = {
+        **payload.params,
+        "p_gateway_request_id": request_id,
+    }
+
     try:
         r = requests.post(
             f"{SUPABASE_URL}/rest/v1/rpc/{payload.function_name}",
@@ -105,7 +108,7 @@ def call_rpc(payload: RpcRequest, x_api_key: str = Header(default=None)):
                 "Authorization": f"Bearer {SUPABASE_SECRET_KEY}",
                 "Content-Type": "application/json",
             },
-            json=payload.params,
+            json=supabase_params,
             timeout=30,
         )
     except requests.RequestException as e:
