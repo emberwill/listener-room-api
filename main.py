@@ -16,13 +16,27 @@ GATEWAY_API_KEY = os.environ.get("GATEWAY_API_KEY")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("listener-room-gateway")
 
-# For now, only Sender Sufficiency exists in Supabase.
-# Future rooms can be added here later.
+# Allowed RPCs across active listener rooms
 ALLOWED_FUNCTIONS = {
     "sender_sufficiency_reserve_source",
     "sender_sufficiency_heartbeat",
     "sender_sufficiency_close_source_no_rows",
     "sender_sufficiency_commit_row_and_close_source",
+    "non_reply_message_reserve_source",
+    "non_reply_message_heartbeat",
+    "non_reply_message_close_source_no_rows",
+    "non_reply_message_commit_row_and_close_source",
+    "re_entry_outcomes_reserve_source",
+    "re_entry_outcomes_heartbeat",
+    "re_entry_outcomes_close_source_no_rows",
+    "re_entry_outcomes_commit_row_and_close_source",
+}
+
+# Only commit RPCs accept p_gateway_request_id
+REQUEST_ID_FUNCTIONS = {
+    "sender_sufficiency_commit_row_and_close_source",
+    "non_reply_message_commit_row_and_close_source",
+    "re_entry_outcomes_commit_row_and_close_source",
 }
 
 
@@ -94,11 +108,10 @@ def call_rpc(payload: RpcRequest, x_api_key: str = Header(default=None)):
             },
         )
 
-    # Inject request ID into params so Supabase can store it in rows if desired
-    supabase_params = {
-        **payload.params,
-        "p_gateway_request_id": request_id,
-    }
+    supabase_params = dict(payload.params)
+
+    if payload.function_name in REQUEST_ID_FUNCTIONS:
+        supabase_params["p_gateway_request_id"] = request_id
 
     try:
         r = requests.post(
@@ -155,6 +168,11 @@ def call_rpc(payload: RpcRequest, x_api_key: str = Header(default=None)):
         payload.function_name,
         r.status_code,
     )
+
+    return {
+        "request_id": request_id,
+        "data": body,
+    }
 
     return {
         "request_id": request_id,
