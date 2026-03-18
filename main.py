@@ -30,6 +30,9 @@ ALLOWED_FUNCTIONS = {
     "re_entry_outcomes_heartbeat",
     "re_entry_outcomes_close_source_no_rows",
     "re_entry_outcomes_commit_row_and_close_source",
+    "non_reply_message_get_dedupe_digest",
+    "sender_sufficiency_get_dedupe_digest",
+    "re_entry_outcomes_get_dedupe_digest",
 }
 
 # Only commit RPCs accept p_gateway_request_id
