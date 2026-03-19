@@ -33,6 +33,7 @@ ALLOWED_FUNCTIONS = {
     "non_reply_message_get_dedupe_digest",
     "sender_sufficiency_get_dedupe_digest",
     "re_entry_outcomes_get_dedupe_digest",
+    "ensure_listener_room_pass",
 }
 
 # Only commit RPCs accept p_gateway_request_id
