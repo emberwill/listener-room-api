@@ -4,7 +4,7 @@ import os
 import requests
 import uuid
 import logging
-from typing import Any  # NEW
+from typing import Any
 
 app = FastAPI()
 
@@ -47,7 +47,6 @@ REQUEST_ID_FUNCTIONS = {
     "re_entry_outcomes_commit_row_and_close_source",
 }
 
-# NEW: strict allowlists
 FUNCTION_PARAM_ALLOWLIST = {
     "ensure_listener_room_pass": {
         "p_pass_id", "p_room_name", "p_pass_label", "p_collector_type", "p_worker_id", "p_notes"
@@ -100,16 +99,11 @@ FUNCTION_PARAM_ALLOWLIST = {
 }
 
 NULL_IF_EMPTY_BY_FUNCTION = {
-    "sender_sufficiency_get_dedupe_digest": {
-        "p_source_url", "p_channel", "p_relationship", "p_message_archetype"
-    },
-    "re_entry_outcomes_get_dedupe_digest": {
-        "p_source_url", "p_channel", "p_relationship", "p_message_archetype"
-    },
-    "non_reply_message_get_dedupe_digest": {
-        "p_source_url", "p_channel", "p_relationship", "p_message_archetype"
-    },
+    "sender_sufficiency_get_dedupe_digest": {"p_source_url", "p_channel", "p_relationship", "p_message_archetype"},
+    "re_entry_outcomes_get_dedupe_digest": {"p_source_url", "p_channel", "p_relationship", "p_message_archetype"},
+    "non_reply_message_get_dedupe_digest": {"p_source_url", "p_channel", "p_relationship", "p_message_archetype"},
 }
+
 
 def _sanitize_params(function_name: str, params: dict[str, Any]) -> dict[str, Any]:
     allowed = FUNCTION_PARAM_ALLOWLIST.get(function_name)
@@ -117,8 +111,7 @@ def _sanitize_params(function_name: str, params: dict[str, Any]) -> dict[str, An
     if allowed is not None:
         out = {k: v for k, v in out.items() if k in allowed}
 
-    null_if_empty = NULL_IF_EMPTY_BY_FUNCTION.get(function_name, set())
-    for k in null_if_empty:
+    for k in NULL_IF_EMPTY_BY_FUNCTION.get(function_name, set()):
         if k in out and isinstance(out[k], str) and out[k].strip() == "":
             out[k] = None
 
@@ -149,54 +142,32 @@ def call_rpc(payload: RpcRequest, x_api_key: str = Header(default=None)):
         logger.error("config_error request_id=%s missing_supabase_config=true", request_id)
         raise HTTPException(
             status_code=500,
-            detail={
-                "error": "Supabase not configured",
-                "request_id": request_id,
-            },
+            detail={"error": "Supabase not configured", "request_id": request_id},
         )
 
     if not GATEWAY_API_KEY:
         logger.error("config_error request_id=%s missing_gateway_key=true", request_id)
         raise HTTPException(
             status_code=500,
-            detail={
-                "error": "Gateway API key not configured",
-                "request_id": request_id,
-            },
+            detail={"error": "Gateway API key not configured", "request_id": request_id},
         )
 
     if x_api_key != GATEWAY_API_KEY:
-        logger.warning(
-            "auth_failed request_id=%s function_name=%s",
-            request_id,
-            payload.function_name,
-        )
+        logger.warning("auth_failed request_id=%s function_name=%s", request_id, payload.function_name)
         raise HTTPException(
             status_code=401,
-            detail={
-                "error": "Unauthorized",
-                "request_id": request_id,
-            },
+            detail={"error": "Unauthorized", "request_id": request_id},
         )
 
     if payload.function_name not in ALLOWED_FUNCTIONS:
-        logger.warning(
-            "function_blocked request_id=%s function_name=%s",
-            request_id,
-            payload.function_name,
-        )
+        logger.warning("function_blocked request_id=%s function_name=%s", request_id, payload.function_name)
         raise HTTPException(
             status_code=403,
-            detail={
-                "error": "Function not allowed",
-                "request_id": request_id,
-            },
+            detail={"error": "Function not allowed", "request_id": request_id},
         )
 
-    # CHANGED: sanitize params first
     supabase_params = _sanitize_params(payload.function_name, payload.params)
 
-    # CHANGED: only inject request_id if that function allowlist includes the param
     if payload.function_name in REQUEST_ID_FUNCTIONS:
         if "p_gateway_request_id" in FUNCTION_PARAM_ALLOWLIST.get(payload.function_name, set()):
             supabase_params["p_gateway_request_id"] = request_id
@@ -221,11 +192,7 @@ def call_rpc(payload: RpcRequest, x_api_key: str = Header(default=None)):
         )
         raise HTTPException(
             status_code=502,
-            detail={
-                "error": "Error calling Supabase",
-                "message": str(e),
-                "request_id": request_id,
-            },
+            detail={"error": "Error calling Supabase", "message": str(e), "request_id": request_id},
         )
 
     try:
@@ -236,28 +203,16 @@ def call_rpc(payload: RpcRequest, x_api_key: str = Header(default=None)):
     if not r.ok:
         logger.warning(
             "supabase_error request_id=%s function_name=%s status_code=%s body=%s",
-            request_id,
-            payload.function_name,
-            r.status_code,
-            body,
+            request_id, payload.function_name, r.status_code, body
         )
         raise HTTPException(
             status_code=r.status_code,
-            detail={
-                "error": "Supabase returned an error",
-                "supabase_body": body,
-                "request_id": request_id,
-            },
+            detail={"error": "Supabase returned an error", "supabase_body": body, "request_id": request_id},
         )
 
     logger.info(
         "request_success request_id=%s function_name=%s status_code=%s",
-        request_id,
-        payload.function_name,
-        r.status_code,
+        request_id, payload.function_name, r.status_code
     )
 
-    return {
-        "request_id": request_id,
-        "data": body,
-    }
+    return {"request_id": request_id, "data": body}
