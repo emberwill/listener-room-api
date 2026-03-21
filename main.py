@@ -4,6 +4,7 @@ import os
 import requests
 import uuid
 import logging
+from typing import Any  # NEW
 
 app = FastAPI()
 
@@ -45,6 +46,83 @@ REQUEST_ID_FUNCTIONS = {
     "non_reply_message_commit_row_and_close_source",
     "re_entry_outcomes_commit_row_and_close_source",
 }
+
+# NEW: strict allowlists
+FUNCTION_PARAM_ALLOWLIST = {
+    "ensure_listener_room_pass": {
+        "p_pass_id", "p_room_name", "p_pass_label", "p_collector_type", "p_worker_id", "p_notes"
+    },
+
+    "sender_sufficiency_enqueue_source": {
+        "p_pass_id", "p_worker_id", "p_source_type", "p_source_title", "p_source_author",
+        "p_source_url", "p_source_date", "p_relevance_note", "p_search_query", "p_priority", "p_metadata_json"
+    },
+    "sender_sufficiency_reserve_source": {"p_worker_id", "p_pass_id"},
+    "sender_sufficiency_heartbeat": {"p_source_id", "p_worker_id", "p_pass_id"},
+    "sender_sufficiency_close_source_no_rows": {"p_source_id", "p_worker_id", "p_pass_id", "p_notes"},
+    "sender_sufficiency_commit_row_and_close_source": {
+        "p_source_id", "p_pass_id", "p_gateway_request_id", "p_worker_id", "p_created_by",
+        "p_unit_index", "p_row", "p_notes"
+    },
+    "sender_sufficiency_get_dedupe_digest": {
+        "p_limit", "p_source_url", "p_channel", "p_relationship", "p_message_archetype"
+    },
+
+    "re_entry_outcomes_enqueue_source": {
+        "p_pass_id", "p_worker_id", "p_source_type", "p_source_title", "p_source_author",
+        "p_source_url", "p_source_date", "p_relevance_note", "p_search_query", "p_priority", "p_metadata_json"
+    },
+    "re_entry_outcomes_reserve_source": {"p_worker_id", "p_pass_id"},
+    "re_entry_outcomes_heartbeat": {"p_source_id", "p_worker_id", "p_pass_id"},
+    "re_entry_outcomes_close_source_no_rows": {"p_source_id", "p_worker_id", "p_pass_id", "p_notes"},
+    "re_entry_outcomes_commit_row_and_close_source": {
+        "p_source_id", "p_pass_id", "p_gateway_request_id", "p_worker_id", "p_created_by",
+        "p_unit_index", "p_row", "p_notes"
+    },
+    "re_entry_outcomes_get_dedupe_digest": {
+        "p_limit", "p_source_url", "p_channel", "p_relationship", "p_message_archetype"
+    },
+
+    "non_reply_message_enqueue_source": {
+        "p_pass_id", "p_worker_id", "p_source_type", "p_source_title", "p_source_author",
+        "p_source_url", "p_source_date", "p_relevance_note", "p_search_query", "p_priority", "p_metadata_json"
+    },
+    "non_reply_message_reserve_source": {"p_worker_id", "p_pass_id"},
+    "non_reply_message_heartbeat": {"p_source_id", "p_worker_id", "p_pass_id"},
+    "non_reply_message_close_source_no_rows": {"p_source_id", "p_worker_id", "p_pass_id", "p_notes"},
+    "non_reply_message_commit_row_and_close_source": {
+        "p_source_id", "p_pass_id", "p_gateway_request_id", "p_worker_id", "p_created_by",
+        "p_unit_index", "p_row", "p_notes"
+    },
+    "non_reply_message_get_dedupe_digest": {
+        "p_limit", "p_source_url", "p_channel", "p_relationship", "p_message_archetype"
+    },
+}
+
+NULL_IF_EMPTY_BY_FUNCTION = {
+    "sender_sufficiency_get_dedupe_digest": {
+        "p_source_url", "p_channel", "p_relationship", "p_message_archetype"
+    },
+    "re_entry_outcomes_get_dedupe_digest": {
+        "p_source_url", "p_channel", "p_relationship", "p_message_archetype"
+    },
+    "non_reply_message_get_dedupe_digest": {
+        "p_source_url", "p_channel", "p_relationship", "p_message_archetype"
+    },
+}
+
+def _sanitize_params(function_name: str, params: dict[str, Any]) -> dict[str, Any]:
+    allowed = FUNCTION_PARAM_ALLOWLIST.get(function_name)
+    out = dict(params or {})
+    if allowed is not None:
+        out = {k: v for k, v in out.items() if k in allowed}
+
+    null_if_empty = NULL_IF_EMPTY_BY_FUNCTION.get(function_name, set())
+    for k in null_if_empty:
+        if k in out and isinstance(out[k], str) and out[k].strip() == "":
+            out[k] = None
+
+    return out
 
 
 class RpcRequest(BaseModel):
@@ -115,10 +193,13 @@ def call_rpc(payload: RpcRequest, x_api_key: str = Header(default=None)):
             },
         )
 
-    supabase_params = dict(payload.params)
+    # CHANGED: sanitize params first
+    supabase_params = _sanitize_params(payload.function_name, payload.params)
 
+    # CHANGED: only inject request_id if that function allowlist includes the param
     if payload.function_name in REQUEST_ID_FUNCTIONS:
-        supabase_params["p_gateway_request_id"] = request_id
+        if "p_gateway_request_id" in FUNCTION_PARAM_ALLOWLIST.get(payload.function_name, set()):
+            supabase_params["p_gateway_request_id"] = request_id
 
     try:
         r = requests.post(
@@ -180,3 +261,4 @@ def call_rpc(payload: RpcRequest, x_api_key: str = Header(default=None)):
         "request_id": request_id,
         "data": body,
     }
+
