@@ -261,4 +261,3 @@ def call_rpc(payload: RpcRequest, x_api_key: str = Header(default=None)):
         "request_id": request_id,
         "data": body,
     }
-
